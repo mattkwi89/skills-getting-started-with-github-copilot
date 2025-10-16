@@ -12,11 +12,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      // Clear activity select before repopulating to avoid duplicate options
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
+  // Hide decorative bullets per user request
+  activityCard.classList.add("hide-bullets");
 
         const spotsLeft = details.max_participants - (details.participants ? details.participants.length : 0);
 
@@ -92,6 +96,52 @@ document.addEventListener("DOMContentLoaded", () => {
             li.appendChild(avatarSpan);
             li.appendChild(info);
 
+            // Delete/unregister button
+            const delBtn = document.createElement("button");
+            delBtn.className = "participant-delete";
+            delBtn.title = "Unregister participant";
+            delBtn.setAttribute("aria-label", `Unregister ${displayName}`);
+            delBtn.innerHTML = "&times;"; // simple X icon
+
+            // When clicked, call DELETE endpoint to unregister
+            delBtn.addEventListener("click", async (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+
+              // Confirm before deleting
+              if (!confirm(`Unregister ${displayName}?`)) return;
+
+              try {
+                // The server stores participants as emails (strings); build email if available
+                let email = typeof p === "string" ? p : p.email;
+                if (!email) {
+                  alert("Participant email not available");
+                  return;
+                }
+
+                const resp = await fetch(
+                  `/activities/${encodeURIComponent(name)}/participants?email=${encodeURIComponent(email)}`,
+                  { method: "DELETE" }
+                );
+
+                const result = await resp.json();
+
+                if (resp.ok) {
+                  // Remove li from DOM
+                  li.remove();
+                  // Refresh activities to update availability and lists
+                  fetchActivities();
+                } else {
+                  alert(result.detail || "Failed to unregister participant");
+                }
+              } catch (err) {
+                console.error("Error unregistering participant:", err);
+                alert("Failed to unregister participant. See console for details.");
+              }
+            });
+
+            li.appendChild(delBtn);
+
             // Optional: role/badge if provided
             if (p && typeof p === "object" && p.role) {
               const badge = document.createElement("span");
@@ -153,6 +203,8 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        // Refresh activities so the new participant appears immediately
+        fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
